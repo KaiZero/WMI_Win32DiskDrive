@@ -1,6 +1,3 @@
-# WMI_Win32DiskDrive
-WMI를 통해 디스크의 정보를 얻어오기
-
 GetDriveDeviceInfo
 =============
 WMI를 통해 Disk 정보 얻어오기
