@@ -15,7 +15,7 @@
 #pragma comment(lib, "iphlpapi.lib" )
 
 // 유일한 응용 프로그램 개체입니다.
-CString GetDriveDeviceID(CString _csLogical);
+CString GetDriveDeviceInfo(CString _csLogical);
 CWinApp theApp;
 CString GetMACAddres();
 using namespace std;
@@ -53,38 +53,25 @@ int main()
 	
 	char a = getchar();
 	CString local(a);
-	CString cs = GetDriveDeviceID(local);
+	CString cs = GetDriveDeviceInfo(local);
 	GetDeviceNameFromLogical(L"D");
 	//wprintf(cs);
 	getchar();
 	getchar();
 	
-	/*
-	char a = getchar();
-	CString ct(a);
-	CString cs = GetDeviceNameFromLogical(ct);
-	wprintf(cs);
-	wprintf(L"\n");rmsep 
-	getchar();
-	getchar();
-	*/
-/*
-	CString csVirus;
-	GetAntiVirusProduct(csVirus);
-	getchar();
-	getchar();
-*/
     return nRetCode;
 }
 
 
-CString GetDriveDeviceID(CString _csLogical)
+CString GetDriveDeviceInfo(CString _csLogical)
 {
 	CString csReturn;
 
 	CString csLogical;
 	csLogical.Format(_T("\\\\.\\\\%s:"), _csLogical);
 	CString csPhysical;
+
+	// Logical Drive 문자로부터 Physical 드라이브 정보를 얻기 위함
 	HANDLE hr = CreateFile(csLogical, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 	if (hr == INVALID_HANDLE_VALUE) return CString("");
 	// 에러 체크
@@ -97,7 +84,11 @@ CString GetDriveDeviceID(CString _csLogical)
 		return CString("");
 	}
 	// 체크
+
+	// Physical 드라이브 순서 획득 및 쿼리에 필요한 이름 조합 
+	
 	csPhysical.Format(_T("\\\\\\\\.\\\\PhysicalDrive%d"), sd.DeviceNumber);
+	
 	CloseHandle(hr);
 
 	IWbemLocator* pWmiLocator;
@@ -115,9 +106,8 @@ CString GetDriveDeviceID(CString _csLogical)
 
 	hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER | CLSCTX_NO_FAILURE_LOG | CLSCTX_NO_CODE_DOWNLOAD, IID_IWbemLocator, (LPVOID*)&pWmiLocator);
 	if (FAILED(hres)) return false;
-	pWmiLocator->Release();
+	
 
-	hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER | CLSCTX_NO_FAILURE_LOG | CLSCTX_NO_CODE_DOWNLOAD, IID_IWbemLocator, (LPVOID*)&pWmiLocator);
 	if (FAILED(hres)) return false;
 
 	hres = pWmiLocator->ConnectServer(_bstr_t(L"\\\\.\\root\\CIMV2"), NULL, NULL, 0, NULL, 0, 0, &pWmiServices);
@@ -129,6 +119,8 @@ CString GetDriveDeviceID(CString _csLogical)
 
 	if (FAILED(hres)) return false;
 	CString csQuery;
+	
+	// Wmi쿼리
 	csQuery.Format(L"Select Model, Caption, InterfaceType from Win32_DiskDrive WHERE Name=\"%s\"", csPhysical);
 	hres = pWmiServices->ExecQuery(L"WQL", _bstr_t(csQuery),
 		WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, NULL, &pEnumerator);
@@ -149,7 +141,6 @@ CString GetDriveDeviceID(CString _csLogical)
 		csReturn = CString(vtProp.bstrVal);
 		VARIANT vtProp2;
 		result = pclsObj->Get(L"Caption", 0, &vtProp2, 0, 0);
-
 		VARIANT vtProp3;
 		result = pclsObj->Get(L"InterfaceType", 0, &vtProp, 0, 0);
 		
@@ -162,7 +153,7 @@ CString GetDriveDeviceID(CString _csLogical)
 		VariantClear(&vtProp);
 		pclsObj->Release();
 	}
-
+	pWmiLocator->Release();
 	return csReturn;
 }
 
@@ -248,43 +239,37 @@ void GetPhysicalDriveSerialNumber(UINT nDriveNumber IN, CString& strSerialNumber
 
 	strSerialNumber.Empty();
 
-	// Format physical drive path (may be '\\.\PhysicalDrive0', '\\.\PhysicalDrive1' and so on).
 	CString strDrivePath;
 	strDrivePath.Format(_T("\\\\.\\PhysicalDrive%u"), nDriveNumber);
 
-	// 2. Set the default process security level 
 	// http://msdn.microsoft.com/en-us/library/windows/desktop/aa393617(v=vs.85).aspx
 	HRESULT hr = ::CoInitializeSecurity(
-		NULL,                        // Security descriptor    
-		-1,                          // COM negotiates authentication service
-		NULL,                        // Authentication services
-		NULL,                        // Reserved
-		RPC_C_AUTHN_LEVEL_DEFAULT,   // Default authentication level for proxies
-		RPC_C_IMP_LEVEL_IMPERSONATE, // Default Impersonation level for proxies
-		NULL,                        // Authentication info
-		EOAC_NONE,                   // Additional capabilities of the client or server
-		NULL);                       // Reserved
+		NULL,                        
+		-1,                          
+		NULL,                        
+		NULL,                        
+		RPC_C_AUTHN_LEVEL_DEFAULT,   
+		RPC_C_IMP_LEVEL_IMPERSONATE, 
+		NULL,                        
+		EOAC_NONE,                   
+		NULL);                       
 
 	ATLENSURE_SUCCEEDED(hr);
 
-	// 3. Create a connection to WMI namespace
 	// http://msdn.microsoft.com/en-us/library/windows/desktop/aa389749(v=vs.85).aspx
 
-	// 3.1. Initialize the IWbemLocator interface
 	CComPtr<IWbemLocator> pIWbemLocator;
 	hr = ::CoCreateInstance(CLSID_WbemLocator, 0,
 		CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pIWbemLocator);
 
 	ATLENSURE_SUCCEEDED(hr);
 
-	// 3.2. Call IWbemLocator::ConnectServer for connecting to WMI 
 	CComPtr<IWbemServices> pIWbemServices;
 	hr = pIWbemLocator->ConnectServer(L"ROOT\\CIMV2",
 		NULL, NULL, 0, NULL, 0, 0, &pIWbemServices);
 
 	ATLENSURE_SUCCEEDED(hr);
 
-	// 4. Set the security levels on WMI connection
 	// http://msdn.microsoft.com/en-us/library/windows/desktop/aa393619(v=vs.85).aspx
 	hr = ::CoSetProxyBlanket(
 		pIWbemServices,
@@ -298,7 +283,6 @@ void GetPhysicalDriveSerialNumber(UINT nDriveNumber IN, CString& strSerialNumber
 
 	ATLENSURE_SUCCEEDED(hr);
 
-	// 5. Execute a WQL (WMI Query Language) query to get physical media info
 	const BSTR szQueryLanguage = L"WQL";
 	const BSTR szQuery = L"SELECT Tag, Caption FROM CIM_PhysicalMedia";
 	CComPtr<IEnumWbemClassObject> pIEnumWbemClassObject;
@@ -311,7 +295,6 @@ void GetPhysicalDriveSerialNumber(UINT nDriveNumber IN, CString& strSerialNumber
 
 	ATLENSURE_SUCCEEDED(hr);
 
-	// 6. Get each enumerator element until find the desired physical drive 
 	ULONG uReturn = 0;
 	while (pIEnumWbemClassObject)
 	{
@@ -320,8 +303,8 @@ void GetPhysicalDriveSerialNumber(UINT nDriveNumber IN, CString& strSerialNumber
 		if (0 == uReturn || FAILED(hr))
 			break;
 
-		VARIANT vtTag;           // unique tag, e.g. '\\.\PHYSICALDRIVE0'
-		VARIANT vtSerialNumber;  // manufacturer-provided serial number
+		VARIANT vtTag;           
+		VARIANT vtSerialNumber;  
 
 		hr = pIWbemClassObject->Get(L"Tag", 0, &vtTag, NULL, NULL);
 		ATLENSURE_SUCCEEDED(hr);
